@@ -1,0 +1,166 @@
+<%#
+Wi-Fi-Cloner addon for Luci
+Copyright 2015 Daniel Franke
+Some functions are inspired by the Wireless Setup of the original Luci Pages.
+Especially the Page which lists the available Wlans contains some lines from the "Join-Wlan" function from original luci admin panel.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+$Id$
+
+-%>
+<%-
+
+	local sys = require "luci.sys"
+	local fs = require "nixio.fs"
+	local utl = require "luci.util"
+	local uci = require "luci.model.uci".cursor()
+	local ntm = require "luci.model.network"
+
+	local has_iwinfo = pcall(require, "iwinfo")
+
+	ntm.init(uci)
+
+	function guess_wifi_hw(dev)
+		local bands = ""
+		local ifname = dev:name()
+		local name, idx = ifname:match("^([a-z]+)(%d+)")
+		idx = tonumber(idx)
+
+		if has_iwinfo then
+			local bl = dev.iwinfo.hwmodelist
+			if bl and next(bl) then
+				if bl.a then bands = bands .. "a" end
+				if bl.b then bands = bands .. "b" end
+				if bl.g then bands = bands .. "g" end
+				if bl.n then bands = bands .. "n" end
+			end
+
+			local hw = dev.iwinfo.hardware_name
+			if hw then
+				return "%s 802.11%s" %{ hw, bands }
+			end
+		end
+
+		-- wl.o
+		if name == "wl" then
+			local name = translatef("Broadcom 802.11%s Wireless Controller", bands)
+			local nm   = 0
+
+			local fd = nixio.open("/proc/bus/pci/devices", "r")
+			if fd then
+				local ln
+				for ln in fd:linesource() do
+					if ln:match("wl$") then
+						if nm == idx then
+							local version = ln:match("^%S+%s+%S%S%S%S([0-9a-f]+)")
+							name = translatef(
+								"Broadcom BCM%04x 802.11 Wireless Controller",
+								tonumber(version, 16)
+							)
+
+							break
+						else
+							nm = nm + 1
+						end
+					end
+				end
+				fd:close()
+			end
+
+			return name
+
+		-- madwifi
+		elseif name == "ath" or name == "wifi" then
+			return translatef("Atheros 802.11%s Wireless Controller", bands)
+
+		-- ralink
+		elseif name == "ra" then
+			return translatef("RaLink 802.11%s Wireless Controller", bands)
+
+		-- hermes
+		elseif name == "eth" then
+			return translate("Hermes 802.11b Wireless Controller")
+
+		-- hostap
+		elseif name == "wlan" and fs.isdirectory("/proc/net/hostap/" .. ifname) then
+			return translate("Prism2/2.5/3 802.11b Wireless Controller")
+
+		-- dunno yet
+		else
+			return translatef("Generic 802.11%s Wireless Controller", bands)
+		end
+	end
+
+	local devices  = ntm:get_wifidevs()
+	local arpcache = { }
+	sys.net.arptable(function(e) arpcache[e["HW address"]:upper()] = e["IP address"] end)
+
+	local netlist = { }
+	local netdevs = { }
+
+	local dev
+	for _, dev in ipairs(devices) do
+		local net
+		for _, net in ipairs(dev:get_wifinets()) do
+			netlist[#netlist+1] = net:id()
+			netdevs[net:id()] = dev:name()
+		end
+	end
+-%>
+<%+header%>
+
+<% if not has_iwinfo then %>
+	<div class="errorbox">
+		<strong><%:Package libiwinfo required!%></strong><br />
+		<%_The <em>libiwinfo-lua</em> package is not installed. You must install this component for working wireless configuration!%>
+	</div>
+<% end %>
+
+
+<h2><a id="content" name="content"><%:Wireless Devices%></a></h2>
+<p>
+<%=translate('The Wificloner offers the possibility to create a new wireless lan which has the same SSID like the cloned one. \
+Because the encryption is disabled for clones wireless LANs, the cloned ones are disabled and have to be enabled in the normal Wi-Fi menu.')%></p><br>
+<p>
+<b><%=translate('Important:')%></b> <%=translate('All new wireless LANs which are cloned with this module are associated with the Interface "clonedwifis" \
+which belongs to the firewall zone "clonedwifis_zone". \
+The zone and the interface are created automatically. The Interface clonedwifis has the IP address 10.0.0.1 and over this interface \
+IP-addresses from 10.0.0.10 - 10.0.0.250 are distributed via dhcp.')%></p>
+<fieldset class="cbi-section" style="display:none">
+	<legend><%:Reconnecting interface%></legend>
+	<img src="<%=resource%>/icons/loading.gif" alt="<%:Loading%>" style="vertical-align:middle" />
+	<span id="iw-rc-status"><%:Waiting for changes to be applied...%></span>
+</fieldset>
+
+<div class="cbi-map">
+
+	<% for _, dev in ipairs(devices) do local nets = dev:get_wifinets() %>
+	<!-- device <%=dev:name()%> -->
+	<fieldset class="cbi-section">
+		<table class="cbi-section-table" style="margin:10px; empty-cells:hide">
+			<!-- physical device -->
+			<tr>
+				<td style="width:34px"><img src="<%=resource%>/icons/wifi_big_disabled.png" style="float:left; margin-right:10px" id="<%=dev:name()%>-iw-upstate" /></td>
+				<td colspan="2" style="text-align:left">
+					<big><strong><%=guess_wifi_hw(dev)%> (<%=dev:name()%>)</strong></big><br />
+					<span id="<%=dev:name()%>-iw-devinfo"></span>
+				</td>
+				<td style="width:310px;text-align:right">
+					<input type="button" class="cbi-button cbi-button-find" style="width:100px" onclick="location.href='<%=luci.dispatcher.build_url("admin/services/wificloner/listwlans")%>?device=<%=dev:name()%>'" title="<%:Find and clone network%>" value="<%:Scan%>" />
+				</td>
+			</tr>
+			<!-- /physical device -->
+		</table>
+	</fieldset>
+	<!-- /device <%=dev:name()%> -->
+	<% end %>
+
+
+</div>
+
+<%+footer%>
