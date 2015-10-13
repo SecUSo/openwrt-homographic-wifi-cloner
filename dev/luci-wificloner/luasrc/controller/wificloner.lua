@@ -17,7 +17,7 @@ $Id$
 module("luci.controller.wificloner", package.seeall)
 
 local cloned_wifis_nw_name = "clonedwifis"
-local cloned_wifiss_zone_name = "clonedwifis_zone"
+local cloned_wifiss_zone_name = "clonedwifis"
 
 function index()
 --[[	if not nixio.fs.access("/etc/config/wificloner") then
