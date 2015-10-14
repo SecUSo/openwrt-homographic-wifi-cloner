@@ -1,9 +1,9 @@
 # Wificloner
 
 ## Description
-The Wificloner is a Openwrt addon. It extends the LuCI configuration interface with a function to clone wireless LANS. 
-It offers the possibility to scan for wireless networks and to add a new wireless LAN which has the same SSID like the cloned one.
-Because the encryption is disabled for clones wireless LANs, the cloned ones are disabled and have to be enabled in the normal Wi-Fi menu.
+The Wificloner is a Openwrt addon. It extends the LuCI configuration interface with a function to clone wireless LANs. 
+It offers the possibility to scan for wireless networks and to clone them. 
+Because the encryption is disabled for cloned wireless LANs, the cloned ones are disabled and have to be enabled in the normal Wi-Fi menu.
 
 Important: All new wireless LANs which are cloned with this module are associated with the Interface clonedwifis which belongs to the firewall zone
 clonedwifis.  The zone and the interface are created automatically. The Interface clonedwifis has the IP address 10.0.0.1 and over this interface
